@@ -36,11 +36,34 @@ namespace raytrace {
                 }
             }
 
-            exml_tree (const Point & pt) : exml_tree(std::vector<double> {pt.x(), pt.y(), pt.z()}) {}
-            exml_tree (const Vector & v) : exml_tree(std::vector<double> {v.theta(), v.phi()}) {}
-            exml_tree (const Line & line);
-            exml_tree (const Trace & trace);
-            const pt::ptree& ptree() const noexcept {return tree_; }
+            exml_tree (const Point & pt) noexcept : exml_tree(std::vector<double> {pt.x(), pt.y(), pt.z()}) {}
+            exml_tree (const Vector & v) noexcept : exml_tree(std::vector<double> {v.theta(), v.phi()}) {}
+            exml_tree (const Line & line) noexcept;
+            exml_tree (const Trace & trace) noexcept;
+            exml_tree (const Sphere & sph) noexcept;
+            const pt::ptree & ptree() const noexcept {return tree_; }
+    };
+
+    class xml_info
+    {
+        private:
+            pt::ptree tree_;
+        public:
+            template <typename T>
+            xml_info(const std::vector<T> & vec) noexcept(std::is_nothrow_copy_assignable<T>::value)
+            {
+                tree_.put("List", "");
+                for(const auto & x : vec)
+                {
+                    pt::ptree child = xml_info(x).ptree();
+                    for(const auto & v : child)
+                        tree_.add_child("List." + v.first, child.get_child(v.first));
+                }
+            }
+
+            xml_info(const Sphere & sph) noexcept;
+            xml_info(const ExpSetup & setup) noexcept;
+            const pt::ptree & ptree() const noexcept {return tree_; }
     };
 
     class base_setup
@@ -60,23 +83,32 @@ namespace raytrace {
     
     class tracing : private base_setup, private ExpSetup
     {
+        public:
+            enum mode {TRACE, DET};
         private:
-            mutable std::atomic<unsigned long> rays_ {0};
+            mode m_;
+            std::vector<std::string_view> mode_name_ {"Trace", "Detector"};
             unsigned int threads_num_ {std::thread::hardware_concurrency()};
-            unsigned int write_partition_ {100};
-            unsigned long rays_max_;
-
-            template <typename T>
-            void do_trace_block() const
+            unsigned int write_partition_ {500};
+            struct run_pars
             {
-                while (rays_ < rays_max_)
+                run_pars(unsigned long rays) : rays_max_(rays) {}
+                mutable std::atomic<unsigned long> rays_ {0};
+                unsigned long rays_max_;                
+            };
+
+            template <typename T, typename Func>
+            void do_trace_block(Func func, const run_pars & pars_) const
+            {
+                using res_t = typename setup::function_traits<Func>::return_type;
+                while (pars_.rays_ < pars_.rays_max_)
                 {
-                    std::vector<Trace> vec_trace_ {};
-                    while(vec_trace_.size() < write_partition_ && ++rays_ < rays_max_)
+                    std::vector<res_t> vec_trace_ {};
+                    while(vec_trace_.size() < write_partition_ && ++pars_.rays_ < pars_.rays_max_)
                     {
                         auto trace_ = make_trace<T>(static_cast<ExpSetup>(*this));
                         if(trace_.is_transmitted())
-                            vec_trace_.emplace_back(std::move(trace_));
+                            vec_trace_.emplace_back(func(trace_));
                     }
                     if(vec_trace_.size() != 0)
                         base_setup::write_xml(exml_tree(vec_trace_), "traces");
@@ -84,36 +116,43 @@ namespace raytrace {
             }
 
             template <typename T>
-            void log() const
+            void log(const run_pars & pars) const
             {
                 pt::ptree log;
                 log.put("Title", "Ray tracing on spherical surfaces by Nikolay Ivanov");
                 log.put("Date", base_setup::date());
-                log.put("Number_of_rays", rays_max_);
+                log.put("Number_of_rays", pars.rays_max_);
+                log.put("Write-mode", mode_name_[m_]);
                 log.put("Incident_angle", ExpSetup::IncAngle());
                 log.put("Beam_mode", boost::core::demangle(typeid(T).name()));
-                log.put("Root-mean-square_height", ExpSetup::RMSHeight());
-                log.put("Correlation_length", ExpSetup::CorrLength());
+                log.put("Experimental-setup", "");
+                log.put_child("Experimental-setup", xml_info(static_cast<ExpSetup>(*this)).ptree());
                 base_setup::write_xml(log, "info");
             }
         public:
-            tracing(unsigned long rays_max, double inc_ang = 0.0, double RMSHeight = Constants::RMSHeight, double CorrLength = Constants::CorrLength, const fs::path & path = fs::current_path())
-            : rays_max_{rays_max}, base_setup(path), ExpSetup(inc_ang, RMSHeight, CorrLength) {}
+            using ExpSetup::add_sphere;
+
+            tracing(mode m, double inc_ang = 0.0, double RMSHeight = Constants::RMSHeight, double CorrLength = Constants::CorrLength, const fs::path & path = fs::current_path())
+            : m_(m), base_setup(path), ExpSetup(inc_ang, RMSHeight, CorrLength) {}
             void set_partition(unsigned int n) noexcept {write_partition_ = n; }
             void set_threads(unsigned int n) noexcept {threads_num_ = n; }
-            void add_sphere(double x, double y, double height, double diameter) noexcept;
-            tracing(const tracing & tr) : rays_(tr.rays_.load()), threads_num_(tr.threads_num_), rays_max_(tr.rays_max_), write_partition_(tr.write_partition_) {} 
 
             template <typename T>
-            void run() const
+            void run(unsigned long rays) const
             {
-                log<T>();
+                run_pars pars (rays);
+                auto trace_ = [](Trace & trace_){return std::move(trace_); };
+                auto det_ = [this](const Trace & trace_){return trace_.det_res(static_cast<ExpSetup>(*this)); };
+                log<T>(pars);
                 std::vector<std::future<void>> futures;
-                for(int i = 0; i < threads_num_; i++)
-                    futures.emplace_back(std::async(&tracing::do_trace_block<T>, this));
+                if(m_ == TRACE)
+                    for(int i = 0; i < threads_num_; i++)
+                        futures.emplace_back(std::async(&tracing::do_trace_block<T, decltype(trace_)>, this, trace_, std::ref(pars)));
+                else
+                    for(int i = 0; i < threads_num_; i++)
+                        futures.emplace_back(std::async(&tracing::do_trace_block<T, decltype(det_)>, this, det_, std::ref(pars)));
                 for(auto & e : futures)
                     e.get();
-                std::cout << rays_ << std::endl;
             }
     };
 
@@ -121,9 +160,9 @@ namespace raytrace {
     {
         private:
             po::variables_map vm_;
+            tracing::mode mode_(const std::string & str) const;
         public:
-            trace_parser(const po::variables_map & vm, const fs::path & path = fs::current_path())
-            : vm_(vm), tracing(vm_["rays"].as<int>(), vm_["IncAngle"].as<float>(), vm_["RMSHeight"].as<float>(), vm_["CorrLength"].as<float>(), path) {}
+            trace_parser(const po::variables_map & vm, const fs::path & path = fs::current_path());
             void run() const;
     };
 

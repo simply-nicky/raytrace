@@ -7,8 +7,11 @@ int main()
 {
     try
     {
-        Sphere sph {0.0, 0.0, 0.0, 1.0, 0.5, Sphere::LOWER};
-
+        tracing tr1 (tracing::TRACE);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        tr1.run<SphBeam3D>(1000000);
+        auto t2 = std::chrono::high_resolution_clock::now();
+        std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms\n";
     }
     catch(std::exception& e)
     {

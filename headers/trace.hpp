@@ -46,24 +46,30 @@ namespace raytrace {
     class ExpSetup
     {
         private:
-            double RMSHeight_, CorrLength_, wl_, inc_ang_;
+            double RMSHeight_, CorrLength_, wl_, inc_ang_, src_dist_, det_dist_, src_l_;
             Surface surf_;
             std::vector<Sphere> sphs_;
         public:
-            ExpSetup (const std::vector<Sphere> & sphs, double inc_ang, double RMSHeight, double CorrLength, double wl) :
-            surf_(Surface(RMSHeight, CorrLength)), sphs_(sphs), inc_ang_(inc_ang), RMSHeight_(RMSHeight), CorrLength_(CorrLength), wl_(wl) {}
             ExpSetup (double inc_ang = 0.0, double RMSHeight = Constants::RMSHeight, double CorrLength = Constants::CorrLength) :
-            ExpSetup(std::vector<Sphere>{Sphere(0.0, 0.0, ExpGeometry::rho, ExpGeometry::rho, ExpGeometry::d, Sphere::LOWER)}, inc_ang, RMSHeight, CorrLength, Constants::WL) {}
+            surf_(Surface(RMSHeight, CorrLength)), sphs_(std::vector<Sphere>{Sphere(0.0, 0.0, ExpGeometry::rho, ExpGeometry::rho, ExpGeometry::d, Sphere::LOWER)}), inc_ang_(inc_ang),
+            RMSHeight_(RMSHeight), CorrLength_(CorrLength), wl_(Constants::WL), src_dist_(ExpGeometry::l1), det_dist_(ExpGeometry::l2), src_l_(ExpGeometry::L) {}
+
             const Sphere & substrate() const noexcept {return *sphs_.cbegin(); }
+            Sphere & substrate() noexcept {return *sphs_.begin(); }
             const std::vector<Sphere> & spheres() const noexcept {return sphs_; }
             const Surface & surface() const noexcept {return surf_; }
             const double IncAngle() const noexcept {return inc_ang_; }
             const double RMSHeight() const noexcept {return RMSHeight_; }
             const double CorrLength() const noexcept {return CorrLength_; }
             const double wavelength() const noexcept {return wl_; }
+            const double source_distance() const noexcept {return src_dist_; }
+            const double source_length() const noexcept {return src_l_; }
+            const double detector_distance() const noexcept {return det_dist_; }
+            double source_length() noexcept {return src_l_; }
             void add_sphere(const Sphere & sph) noexcept {sphs_.emplace_back(sph); }
-            void add_sphere(double x, double y, double radius, double diameter);
+            void add_sphere(double x, double y, double height, double diameter) noexcept;
             void add_sphere(const std::vector<Sphere> & sphs) noexcept {sphs_.insert(sphs_.end(), sphs.cbegin(), sphs.cend()); }
+            void add_sphere(const std::vector<double> & x, const std::vector<double> & y, const std::vector<double> & height, const std::vector<double> & diameter);
     };
 
     class Beam : public Line
@@ -79,53 +85,53 @@ namespace raytrace {
             bool is_intersect (const std::vector<Sphere> & sphs) const noexcept;
             double IncAng (const SphPoint & spt) const;
             Vector SpecVec (const SphPoint & spt) const;
-            virtual Vector ScatVec(const SphPoint & pt, const Surface & surf) const = 0;
+            virtual Vector ScatVec(const SphPoint & pt, const Surface & surf, double wl) const = 0;
     };
 
     class Beam2D : public Beam
     {
         public:
             using Beam::Beam;
-            virtual Vector ScatVec(const SphPoint & spt, const Surface& surf) const override;
+            virtual Vector ScatVec(const SphPoint & spt, const Surface & surf, double wl) const override;
     };
 
     class SphBeam2D : public Beam2D
     {
         public:
             using Beam2D::Beam2D;
-            SphBeam2D (const Sphere & sph, double inc_ang);
-            SphBeam2D (const ExpSetup & setup) : SphBeam2D(setup.substrate(), setup.IncAngle()) {}
+            SphBeam2D (const Sphere & sph, double inc_ang, double src_dist);
+            SphBeam2D (const ExpSetup & setup) : SphBeam2D(setup.substrate(), setup.IncAngle(), setup.source_distance()) {}
     };
 
     class PlaneBeam2D : public Beam2D
     {
         public:
             using Beam2D::Beam2D;
-            PlaneBeam2D (const Sphere & sph, const Surface & surf, double inc_ang);
-            PlaneBeam2D (const ExpSetup & setup) : PlaneBeam2D(setup.substrate(), setup.surface(), setup.IncAngle()) {}
+            PlaneBeam2D (const Sphere & sph, const Surface & surf, double inc_ang, double src_dist);
+            PlaneBeam2D (const ExpSetup & setup) : PlaneBeam2D(setup.substrate(), setup.surface(), setup.IncAngle(), setup.source_distance()) {}
     };
 
     class Beam3D : public Beam
     {
         public:
             using Beam::Beam;
-            virtual Vector ScatVec(const SphPoint & spt, const Surface& surf) const override;
+            virtual Vector ScatVec(const SphPoint & spt, const Surface & surf, double wl) const override;
     };
 
     class SphBeam3D : public Beam3D
     {
         public:
             using Beam3D::Beam3D;
-            SphBeam3D(const Sphere & sph, double inc_ang);
-            SphBeam3D(const ExpSetup & setup) : SphBeam3D(setup.substrate(), setup.IncAngle()) {}
+            SphBeam3D(const Sphere & sph, double inc_ang, double src_dist, double src_len);
+            SphBeam3D(const ExpSetup & setup) : SphBeam3D(setup.substrate(), setup.IncAngle(), setup.source_distance(), setup.source_length()) {}
     };
 
     class PlaneBeam3D : public Beam3D
     {
         public:
             using Beam3D::Beam3D;
-            PlaneBeam3D(const Sphere & sph, double inc_ang);
-            PlaneBeam3D(const ExpSetup & setup) : PlaneBeam3D(setup.substrate(), setup.IncAngle()) {}
+            PlaneBeam3D(const Sphere & sph, double inc_ang, double src_dist);
+            PlaneBeam3D(const ExpSetup & setup) : PlaneBeam3D(setup.substrate(), setup.IncAngle(), setup.source_distance()) {}
     };
 
     class Trace
@@ -141,8 +147,8 @@ namespace raytrace {
             const_iterator begin() const {return const_iterator(trace_.begin()); }
             const_iterator end() const {return const_iterator(trace_.end()); }
 
-            template <typename T>
-            Trace (const T & line, const Surface & surf, const std::vector<Sphere> & sphs, double wl)
+            template <typename T, typename Object>
+            Trace (const T & line, const Surface & surf, const Object & sphs, double wl)
             {
                 trace_.emplace_back(std::make_unique<T>(line));
                 is_transmitted_ = trace_.back()->is_intersect(sphs); 
@@ -155,7 +161,7 @@ namespace raytrace {
                     while (is_transmitted_)
                     {
                         if (sw < surf.TIS(trace_.back()->IncAng(next_spt_), wl))
-                            trace_.emplace_back(std::make_unique<T>(next_spt_.point(), trace_.back()->ScatVec(next_spt_, surf)));
+                            trace_.emplace_back(std::make_unique<T>(next_spt_.point(), trace_.back()->ScatVec(next_spt_, surf, wl)));
                         else
                             trace_.emplace_back(std::make_unique<T>(next_spt_.point(), trace_.back()->SpecVec(next_spt_)));
                         pts = trace_.back()->Intersect(sphs);
@@ -171,9 +177,8 @@ namespace raytrace {
             template <typename T>
             Trace (const T & line, const ExpSetup & setup) : Trace(line, setup.surface(), setup.spheres(), setup.wavelength()) {}
 
-            template <typename T>
-            Trace (const T & line, const Surface & surf, const Sphere & sph, double wl) : Trace(line, surf, std::vector<Sphere> {sph}, wl) {}
-
+            Point det_res(double det_dist) const noexcept;
+            Point det_res(const ExpSetup & setup) const noexcept {return det_res(setup.detector_distance()); }
             bool is_transmitted() const noexcept {return is_transmitted_; }
             int size() const noexcept {return trace_.size(); }
     };

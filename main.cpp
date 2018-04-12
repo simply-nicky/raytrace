@@ -22,7 +22,8 @@ int main (int ac, char * av[])
             ("help-config-file", "Print config file manual")
             ("rays,N", po::value<int>()->value_name(" ")->notifier([](const int n){if(n < 0) throw std::invalid_argument("The number of rays must be a positive number."); }), "Number of rays to trace.")
             ("verbose,v", po::value<int>()->value_name(" ")->default_value(1), "Verbosity of output.")
-            ("config-filename", po::value<std::string>()->default_value(std::string("config.ini")), "Config filename.")
+            ("write-mode", po::value<std::string>()->value_name(" ")->default_value("Trace")->notifier([](const std::string & str){if(str != "Trace" && str != "Detector") throw std::invalid_argument("Write mode must be Full or Detector."); }), "Ray-trace write mode:\nTrace - ray-traces\nDetector - detector points")
+            ("config-filename", po::value<std::string>()->value_name(" ")->default_value(std::string("config.ini")), "Config filename.")
             ;
         po::options_description config("Configuration");
         config.add_options()
@@ -46,7 +47,7 @@ int main (int ac, char * av[])
         po::store(po::parse_command_line(ac, av, all), vm);
         if(vm.count("ImpMode"))
         {
-            std::ifstream config_stream {vm["config-filename"].as<std::string>().c_str()};
+            std::ifstream config_stream {vm["config-filename"].as<std::string>()};
             if(config_stream)
                 po::store(po::parse_config_file(config_stream, config_file), vm);
         }

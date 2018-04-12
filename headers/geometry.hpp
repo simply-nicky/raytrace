@@ -30,19 +30,19 @@ namespace raytrace { namespace geometry {
             : vx_(std::cos(theta) * std::cos(phi)), vy_(std::cos(theta) * std::sin(phi)), vz_(std::sin(theta)) {}
             Vector (double vx, double vy, double vz) noexcept : vx_(vx), vy_(vy), vz_(vz) {}
             Vector (const Point & pt1, const Point & pt2) noexcept : vx_(pt2.x() - pt1.x()), vy_(pt2.y() - pt1.y()), vz_(pt2.z() - pt1.z()) {} 
-            Vector operator+(const Vector & v) const noexcept {return Vector(this->vx_ + v.vx_, this->vy_ + v.vy_, this->vz_ + v.vz_); }
-            Vector operator-(const Vector & v) const noexcept {return Vector(this->vx_ - v.vx_, this->vy_ - v.vy_, this->vz_ - v.vz_); }
-            Vector operator-() const noexcept {return Vector(-this->vx_, -this->vy_, -this->vz_); }
-            double operator*(const Vector & v) const noexcept {return this->vx_ * v.vx_ + this->vy_ * v.vy_ + this->vz_ * v.vz_; }
-            Vector operator*(double k) const noexcept {return Vector(k * this->vx_, k * this->vy_, k * this->vz_); }
+            Vector operator+(const Vector & v) const noexcept {return Vector(vx_ + v.vx_, vy_ + v.vy_, vz_ + v.vz_); }
+            Vector operator-(const Vector & v) const noexcept {return Vector(vx_ - v.vx_, vy_ - v.vy_, vz_ - v.vz_); }
+            Vector operator-() const noexcept {return Vector(-vx_, -vy_, -vz_); }
+            double operator*(const Vector & v) const noexcept {return vx_ * v.vx_ + vy_ * v.vy_ + vz_ * v.vz_; }
+            Vector operator*(double k) const noexcept {return Vector(k * vx_, k * vy_, k * vz_); }
             Vector operator/(double k) const;
             friend Vector operator*(double k, const Vector & v) noexcept {return Vector(k * v.vx_, k * v.vy_, k * v.vz_); }
             friend std::ostream & operator<< (std::ostream & os, const Vector & v) noexcept;
             friend Vector VectorProduct (const Vector & a, const Vector & b) noexcept;
-            double theta() const noexcept {return atan(this->vz_ / sqrt(this->vx_ * this->vx_ + this->vy_ * this->vy_)); }
-            double phi() const noexcept {return atan2(this->vy_, this->vx_); }
-            double Norm() const noexcept {return sqrt(vx_ * vx_ + vy_ * vy_ + vz_ * vz_); }
-            Vector Normalize() {return *this / this->Norm(); }
+            double theta() const noexcept {return atan(vz_ / sqrt(vx_ * vx_ + vy_ * vy_)); }
+            double phi() const noexcept {return atan2(vy_, vx_); }
+            double Norm() const {return sqrt(vx_ * vx_ + vy_ * vy_ + vz_ * vz_); }
+            Vector Normalize() {return *this / Norm(); }
             double x() const noexcept {return vx_; }
             double y() const noexcept {return vy_; }
             double z() const noexcept {return vz_; }
@@ -107,10 +107,10 @@ namespace raytrace { namespace geometry {
             Point pt_;
             Sphere sph_;
         public:
-            SphPoint(double x, double y, double z, const Sphere & sph) : pt_(x, y, z), sph_(sph) {}
-            const Point & point() const {return pt_; }
-            const Sphere & sphere() const {return sph_; }
-            Vector NormVec() const {return sph_.NormVec(pt_); }
+            SphPoint(double x, double y, double z, const Sphere & sph) noexcept : pt_(x, y, z), sph_(sph) {}
+            const Point & point() const noexcept {return pt_; }
+            const Sphere & sphere() const noexcept {return sph_; }
+            Vector NormVec() const noexcept {return sph_.NormVec(pt_); }
     };
 
     class Line

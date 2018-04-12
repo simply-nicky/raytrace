@@ -87,22 +87,22 @@ double Surface::Indicatrix1D (double th, double th0, double wl) const
     std::complex<double> t (2.0 * sin(th) / (sin(th) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th) * cos(th)))));
     std::complex<double> t0 (2.0 * sin(th0) / (sin(th0) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th0) * cos(th0)))));
     return pow(k, 3) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / 16.0 / Constants::pi / sin(th0)
-    / sqrt(cos(th0) * cos(th)) * pow(10.0, 9) * PSD1D(1 / wl * pow(10.0, 3) * abs(cos(th0) - cos(th)));
+    / sqrt(cos(th0) * cos(th)) * pow(10.0, 9) * PSD1D(1.0 / wl * pow(10.0, 3) * abs(cos(th0) - cos(th)));
 }
 
 double Surface::Indicatrix2D (double th, double phi, double th0, double wl) const
 {
-    if (th < 0 || th > Constants::pi / 2)
-        throw std::out_of_range ("Surface::Indicatrix1D : angle th is out of range");
-    if (phi < 0 || phi > Constants::pi / 2)
-        throw std::out_of_range ("Surface::Indicatrix1D : angle phi is out of range");
-    if (th0 < 0 || th0 > Constants::pi / 2)
-        throw std::out_of_range ("Surface::Indicatrix1D : angle th0 is out of range");       
+    if (th < 0 || th > Constants::pi / 2.0)
+        throw std::out_of_range ("Surface::Indicatrix2D : angle th is out of range");
+    if (phi < -Constants::pi / 2.0 || phi > Constants::pi / 2.0)
+        throw std::out_of_range ("Surface::Indicatrix2D : angle phi is out of range");
+    if (th0 < 0 || th0 > Constants::pi / 2.0)
+        throw std::out_of_range ("Surface::Indicatrix2D : angle th0 is out of range");       
     double k = 2.0 * Constants::pi / wl;
     std::complex<double> t (2.0 * sin(th) / (sin(th) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th) * cos(th)))));
     std::complex<double> t0 (2.0 * sin(th0) / (sin(th0) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th0) * cos(th0)))));
-    return pow(k, 4) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / pow(4 * Constants::pi, 2) / sin(th0)
-    / sqrt(cos(th0) * cos(th)) * pow(10.0, 12) * PSD2D(1 / wl * pow(10.0, 3) * (cos(th) * cos(phi) - cos(th0)), 1 / wl * pow(10.0, 3) * cos(th) * cos(phi));
+    return  pow(k, 4) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / pow(4 * Constants::pi, 2) / sin(th0) * pow(10.0, 12)
+    * PSD2D(1.0 / wl * pow(10.0, 3) * (cos(th) * cos(phi) - cos(th0)), 1.0 / wl * pow(10.0, 3) * cos(th) * sin(phi));
 }
 
 double Surface::CritAng(double wl) const
@@ -112,9 +112,22 @@ double Surface::CritAng(double wl) const
 
 
 // ExpSetup
-void ExpSetup::add_sphere(double x, double y, double radius, double diameter) noexcept
+void ExpSetup::add_sphere(double x, double y, double height, double diameter) noexcept
 {
+    if(substrate().part() == Sphere::LOWER)
+        sphs_.emplace_back(Sphere(x, y, substrate().center().z() - sqrt(pow(substrate().radius(), 2) - pow(x - substrate().center().x(), 2) - pow(y - substrate().center().y(), 2)) - pow(diameter, 2) / 2.0 / height + height / 2.0, (pow(height, 2) + pow(diameter, 2)) / 2.0 / height, diameter, Sphere::UPPER));
+    else
+        sphs_.emplace_back(Sphere(x, y, substrate().center().z() + sqrt(pow(substrate().radius(), 2) - pow(x - substrate().center().x(), 2) - pow(y - substrate().center().y(), 2)) - pow(diameter, 2) / 2.0 / height + height / 2.0, (pow(height, 2) + pow(diameter, 2)) / 2.0 / height, diameter, Sphere::UPPER));
+}
 
+void ExpSetup::add_sphere(const std::vector<double> & x, const std::vector<double> & y, const std::vector<double> & height, const std::vector<double> & diameter)
+{
+    if(x.size() == y.size() && y.size() == height.size() && height.size() == diameter.size())
+    {
+        setup::transform([this](double x_, double y_, double h_, double d_){add_sphere(x_, y_, h_, d_); }, x.cbegin(), x.cend(), y.cbegin(), height.cbegin(), diameter.cbegin());
+    }
+    else
+        throw std::invalid_argument ("ExpSetup::add_sphere : argument's vector sizes must be equal.");
 }
 
 
@@ -196,70 +209,77 @@ Vector Beam::SpecVec (const SphPoint & spt) const
 
 
 // Beam2D
-SphBeam2D::SphBeam2D (const Sphere & sph, double inc_ang)
+SphBeam2D::SphBeam2D (const Sphere & sph, double inc_ang, double src_dist)
 {
     SetPoint(
         Point {
             sph.center().x(),
-            sph.center().y() - ExpGeometry::l1,
-            sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (ExpGeometry::l1 - sph.diameter() / 2.0)
+            sph.center().y() - src_dist,
+            sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0)
         });
         double th1 = -sph.psi() / 2.0 - inc_ang;
-        double th2 = atan(-tan(sph.psi() / 2.0 + inc_ang) * (ExpGeometry::l1 - sph.diameter() / 2.0) / (ExpGeometry::l1 + sph.diameter() / 2.0));
+        double th2 = atan(-tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0) / (src_dist + sph.diameter() / 2.0));
         SetVector(Vector((th2 - th1) * setup::dist(setup::gen) + th1));
 }
 
-PlaneBeam2D::PlaneBeam2D (const Sphere & sph, const Surface & surf, double inc_ang)
+PlaneBeam2D::PlaneBeam2D (const Sphere & sph, const Surface & surf, double inc_ang, double src_dist)
 {
     SetPoint (Point {
         sph.center().x(),
-        sph.center().y() - ExpGeometry::l1,
-        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (ExpGeometry::l1 - sph.diameter() / 2.0) + surf.dmax(sph) * setup::dist(setup::gen)
+        sph.center().y() - src_dist,
+        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0) + surf.dmax(sph) * setup::dist(setup::gen)
     });
     SetVector(Vector(-sph.psi() / 2.0 - inc_ang));
 }
 
-Vector Beam2D::ScatVec (const SphPoint & spt, const Surface & surf) const
+Vector Beam2D::ScatVec (const SphPoint & spt, const Surface & surf, double wl) const
 {
-    setup::RNG ScatAng ([&] (double x) {return surf.Indicatrix1D(x, IncAng(spt)); });
+    setup::RNG ScatAng ([&] (double x) {return surf.Indicatrix1D(x, IncAng(spt), wl); }, 0.0, 89.0 / 180.0 * Constants::pi);
     return geometry::RotationMatrix(ScatAng(setup::gen)) * (direction() - (spt.NormVec() * direction()) * spt.NormVec());
 }
 
 
 // Beam3D
-SphBeam3D::SphBeam3D (const Sphere & sph, double inc_ang)
+SphBeam3D::SphBeam3D (const Sphere & sph, double inc_ang, double src_dist, double src_len)
 {
-    double x0 = ExpGeometry::L * setup::dist(setup::gen) - ExpGeometry::L / 2;
+    double x0 = ExpGeometry::L * setup::dist(setup::gen) - src_len / 2;
     SetPoint(
     Point{
         sph.center().x() + x0,
-        sph.center().y() - ExpGeometry::l1,
-        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (ExpGeometry::l1 - sph.diameter() / 2.0)
+        sph.center().y() - src_dist,
+        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0)
     });
-    double phi = Constants::pi / 2 - (2 * asin(sph.diameter() / 2.0 / sqrt(pow(ExpGeometry::l1, 2) + x0 * x0)) * setup::dist(setup::gen) + atan(-x0 / ExpGeometry::l1) - asin(sph.diameter() / 2.0 / sqrt(pow(ExpGeometry::l1, 2) + x0 * x0)));
-    double th1 = atan((ExpGeometry::l1 - sph.diameter() / 2) * tan(sph.psi() / 2 + inc_ang) / (x0 * cos(phi) - ExpGeometry::l1 * sin(phi) + sqrt(pow(sph.diameter() / 2, 2) - pow(x0 * sin(phi) + ExpGeometry::l1 * cos(phi), 2))));
-    double th2 = atan((ExpGeometry::l1 - sph.diameter() / 2) * tan(sph.psi() / 2 + inc_ang) / (x0 * cos(phi) - ExpGeometry::l1 * sin(phi) - sqrt(pow(sph.diameter() / 2, 2) - pow(x0 * sin(phi) + ExpGeometry::l1 * cos(phi), 2))));
+    double phi = Constants::pi / 2 - (2 * asin(sph.diameter() / 2.0 / sqrt(pow(src_dist, 2) + x0 * x0)) * setup::dist(setup::gen) + atan(-x0 / src_dist) - asin(sph.diameter() / 2.0 / sqrt(pow(src_dist, 2) + x0 * x0)));
+    double th1 = atan((src_dist - sph.diameter() / 2) * tan(sph.psi() / 2 + inc_ang) / (x0 * cos(phi) - src_dist * sin(phi) + sqrt(pow(sph.diameter() / 2, 2) - pow(x0 * sin(phi) + src_dist * cos(phi), 2))));
+    double th2 = atan((src_dist - sph.diameter() / 2) * tan(sph.psi() / 2 + inc_ang) / (x0 * cos(phi) - src_dist * sin(phi) - sqrt(pow(sph.diameter() / 2, 2) - pow(x0 * sin(phi) + src_dist * cos(phi), 2))));
     SetVector(Vector((th2 - th1) * setup::dist(setup::gen) + th1, phi));
 }
 
-PlaneBeam3D::PlaneBeam3D (const Sphere & sph, double inc_ang)
+PlaneBeam3D::PlaneBeam3D (const Sphere & sph, double inc_ang, double src_dist)
 {
     double r = sph.diameter() / 2.0 * setup::dist(setup::gen);
     double phi = 2 * Constants::pi * setup::dist(setup::gen);
     SetPoint(
     Point{
         sph.center().x() - r * cos(phi),
-        sph.center().y() - ExpGeometry::l1,
-        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (ExpGeometry::l1 - r * sin(phi))
+        sph.center().y() - src_dist,
+        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - r * sin(phi))
     });
     SetVector(Vector(-sph.psi() / 2.0 - inc_ang));
 }
 
-Vector Beam3D::ScatVec (const SphPoint & spt, const Surface & surf) const
+Vector Beam3D::ScatVec (const SphPoint & spt, const Surface & surf, double wl) const
 {
-    setup::RNG Theta ([&] (double x) {return surf.Indicatrix1D(x, IncAng(spt)); });
+    setup::RNG Theta ([&] (double x) {return surf.Indicatrix1D(x, IncAng(spt), wl); }, 0.0, 89.0 / 180.0 * Constants::pi);
     double theta = Theta(setup::gen);
-    setup::RNG Phi ([&] (double x) {return surf.Indicatrix2D(theta, x, IncAng(spt)); });
+    setup::RNG Phi ([&] (double x) {return surf.Indicatrix2D(theta, x, IncAng(spt), wl); }, -Constants::pi / 2.0, Constants::pi / 2.0);
     Vector tau = direction() - (spt.NormVec() * direction()) * spt.NormVec();
     return geometry::RotationMatrix(Phi(setup::gen), spt.NormVec()) * (geometry::RotationMatrix(theta, VectorProduct(spt.NormVec(), tau)) * tau);
+}
+
+
+// Trace
+Point Trace::det_res(double det_dist) const noexcept
+{
+    return std::move(Point(trace_.back()->point().x() + (det_dist - trace_.back()->point().y()) / tan(trace_.back()->direction().phi()), det_dist, trace_.back()->point().z() + (det_dist - trace_.back()->point().y()) * tan(trace_.back()->direction().theta()) / sin(trace_.back()->direction().phi())));
 }

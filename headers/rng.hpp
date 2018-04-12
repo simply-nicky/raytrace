@@ -53,7 +53,7 @@ namespace raytrace { namespace setup {
             Spline CDF;
         public:
             template <typename fn>
-            RNG (fn pdf, double low = 0.0, double high = 89.0 / 180.0 * Constants::pi, unsigned int resolution = RES) : low_(low), high_(high), res_(resolution)
+            RNG (fn pdf, double low, double high, unsigned int resolution = RES) : low_(low), high_(high), res_(resolution)
             {
                 if (low_ >= high_)
                     throw std::invalid_argument ("RNG (pdf, low, high, resolution) : low value is greater than high value");
@@ -83,7 +83,30 @@ namespace raytrace { namespace setup {
             template <typename Generator>
             double operator() (Generator & g) {return CDF.arg(dist(g)); }
     };
+
+    template<class Func, class InputIt, class ... InputIts>
+    void transform(Func func, InputIt first, InputIt last, InputIts... firsts)
+    {
+        while (first != last)
+            func(*first++, (*firsts++)...);
+    }
     
+    template <typename T>
+    struct function_traits : public function_traits<decltype(&T::operator())> {};
+    
+    template<class ClassType, class ReturnType, class... Args>
+    struct function_traits<ReturnType(ClassType::*)(Args...) const> : public function_traits<ReturnType(ClassType::*)(Args...)> {};
+    
+    template <typename ClassType, typename ReturnType, typename... Args>
+    struct function_traits<ReturnType(ClassType::*)(Args...)>
+    {
+        using arity = std::integral_constant<std::size_t, sizeof...(Args)>;
+        using return_type = ReturnType;
+
+        template <size_t i>
+        using arg = typename std::tuple_element<i, std::tuple<Args...>>::type;
+    };
+
 }}
 
 #endif

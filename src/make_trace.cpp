@@ -21,7 +21,7 @@ exml_tree::exml_tree(int n) noexcept : exml_tree()
     tree_.put("Expression.Number", n);
 }
 
-exml_tree::exml_tree (const Line & line) : exml_tree(
+exml_tree::exml_tree (const Line & line) noexcept : exml_tree(
     std::vector<double> 
     {
         line.point().x(), 
@@ -31,7 +31,7 @@ exml_tree::exml_tree (const Line & line) : exml_tree(
         line.direction().phi()
     }) {}
 
-exml_tree::exml_tree(const Trace & trace) : exml_tree()
+exml_tree::exml_tree(const Trace & trace) noexcept : exml_tree()
 {
     tree_.put("Expression.Function.Symbol", "List");
     tree_.put("Expression.Function.Function.Symbol", "List");
@@ -40,6 +40,29 @@ exml_tree::exml_tree(const Trace & trace) : exml_tree()
     tree_.add_child("Expression.Function.Number", exml_tree(trace.is_transmitted()).ptree().get_child("Expression.Number"));
 }
 
+
+// xm_info
+xml_info::xml_info(const Sphere & sph) noexcept
+{
+    tree_.put("Center[mm]", sph.center());
+    tree_.put("Radius[mm]", sph.radius());
+    tree_.put("Diameter[mm]", sph.diameter());
+}
+
+xml_info::xml_info(const ExpSetup & setup) noexcept
+{
+    tree_.put("Material", "");
+    tree_.put("Material.Root-mean-square-height[nm]", setup.RMSHeight());
+    tree_.put("Material.Correlation-length[um]", setup.CorrLength());
+    tree_.put("Wavelength[nm]", setup.wavelength());
+    tree_.put("Incident-angle", setup.IncAngle());
+    tree_.put("Imperfections-mode", setup.spheres().size() > 1);
+    tree_.put_child("Spheres", xml_info(setup.spheres()).ptree());
+    tree_.put("Experiment-geometry", "");
+    tree_.put("Experiment-geometry.source-to-mirror-distance[mm]", setup.source_distance());
+    tree_.put("Experiment-geometry.mirror-to-detector-distance[mm]", setup.detector_distance());
+    tree_.put("Experiment-geometry.source-length[mm]", setup.source_length());
+}
 
 // base_setup
 std::string base_setup::set_date(const time_t t) const noexcept
@@ -88,26 +111,34 @@ void base_setup::write_xml(const pt::ptree & tree, const std::string & name) con
 
 
 // trace_parser
+tracing::mode trace_parser::mode_(const std::string & str) const
+{
+    if(str == "Trace")
+        return tracing::TRACE;
+    else if(str == "Detector")
+        return tracing::DET;
+    else
+        throw std::invalid_argument("trace_parser::mode : invalid argument");
+}
+
+trace_parser::trace_parser(const po::variables_map & vm, const fs::path & path)
+: vm_(vm), tracing(mode_(vm_["write-mode"].as<std::string>()), vm_["IncAngle"].as<float>(), vm_["RMSHeight"].as<float>(), vm_["CorrLength"].as<float>(), path)
+{
+    tracing::add_sphere(vm_["Sphere.location.x"].as<std::vector<double>>(), vm_["Sphere.location.y"].as<std::vector<double>>(), vm_["Sphere.height"].as<std::vector<double>>(), vm_["Sphere.diameter"].as<std::vector<double>>());
+}
+
 void trace_parser::run() const
 {
     if(vm_["BeamMode"].as<std::string>() == "Plane" && vm_["Dimensions"].as<std::string>() == "2D")
-        tracing::run<PlaneBeam2D>();
+        tracing::run<PlaneBeam2D>(vm_["rays"].as<int>());
     else if(vm_["BeamMode"].as<std::string>() == "Spherical" && vm_["Dimensions"].as<std::string>() == "2D")
-        tracing::run<SphBeam2D>();       
+        tracing::run<SphBeam2D>(vm_["rays"].as<int>());       
     else if(vm_["BeamMode"].as<std::string>() == "Plane" && vm_["Dimensions"].as<std::string>() == "3D")
-        tracing::run<PlaneBeam3D>();       
+        tracing::run<PlaneBeam3D>(vm_["rays"].as<int>());       
     else if(vm_["BeamMode"].as<std::string>() == "Spherical" && vm_["Dimensions"].as<std::string>() == "3D")
-        tracing::run<SphBeam3D>();  
+        tracing::run<SphBeam3D>(vm_["rays"].as<int>());  
     else
         throw std::invalid_argument("trace_parser::run : invalid argument.");     
 }
-
-// auto make_loc_pt = [this](double x, double y) -> Point
-//     {
-//         if(ExpSetup::substrate().part() == Sphere::LOWER)
-//             return Point {x, y, ExpSetup::substrate().center().z() - sqrt(pow(ExpSetup::substrate().radius(), 2) - x * x - y * y)};
-//         else
-//             return Point {x, y, ExpSetup::substrate().center().z() + sqrt(pow(ExpSetup::substrate().radius(), 2) - x * x - y * y)};
-//     };
 
 }
