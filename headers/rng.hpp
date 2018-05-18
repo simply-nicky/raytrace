@@ -40,20 +40,20 @@ namespace raytrace { namespace setup {
             double arg (double y) const;
     };
 
-    static std::uniform_real_distribution<> dist;
+    static std::uniform_real_distribution<double> dist;
     static auto seed = std::chrono::system_clock::now().time_since_epoch().count();
-    static std::default_random_engine gen (seed);
+    static std::mt19937 gen (seed);
 
     class RNG
     {
         private:
             static constexpr int RES = 2000;
-            const double low_, high_;
-            const unsigned int res_;
+            double low_, high_;
+            unsigned int res_;
             Spline CDF;
         public:
             template <typename fn>
-            RNG (fn pdf, double low, double high, unsigned int resolution = RES) : low_(low), high_(high), res_(resolution)
+            RNG (fn && pdf, double low, double high, unsigned int resolution = RES) : low_(low), high_(high), res_(resolution)
             {
                 if (low_ >= high_)
                     throw std::invalid_argument ("RNG (pdf, low, high, resolution) : low value is greater than high value");
@@ -81,7 +81,7 @@ namespace raytrace { namespace setup {
             }
             
             template <typename Generator>
-            double operator() (Generator & g) {return CDF.arg(dist(g)); }
+            double operator() (Generator && g) {return CDF.arg(dist(std::forward<Generator>(g))); }
     };
 
     template<class Func, class InputIt, class ... InputIts>
@@ -90,22 +90,6 @@ namespace raytrace { namespace setup {
         while (first != last)
             func(*first++, (*firsts++)...);
     }
-    
-    template <typename T>
-    struct function_traits : public function_traits<decltype(&T::operator())> {};
-    
-    template<class ClassType, class ReturnType, class... Args>
-    struct function_traits<ReturnType(ClassType::*)(Args...) const> : public function_traits<ReturnType(ClassType::*)(Args...)> {};
-    
-    template <typename ClassType, typename ReturnType, typename... Args>
-    struct function_traits<ReturnType(ClassType::*)(Args...)>
-    {
-        using arity = std::integral_constant<std::size_t, sizeof...(Args)>;
-        using return_type = ReturnType;
-
-        template <size_t i>
-        using arg = typename std::tuple_element<i, std::tuple<Args...>>::type;
-    };
 
 }}
 

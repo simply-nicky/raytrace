@@ -112,19 +112,19 @@ double Surface::CritAng(double wl) const
 
 
 // ExpSetup
-void ExpSetup::add_sphere(double x, double y, double height, double diameter) noexcept
+void ExpSetup::add_sphere(double x, double y, double height, double radius) noexcept
 {
     if(substrate().part() == Sphere::LOWER)
-        sphs_.emplace_back(Sphere(x, y, substrate().center().z() - sqrt(pow(substrate().radius(), 2) - pow(x - substrate().center().x(), 2) - pow(y - substrate().center().y(), 2)) - pow(diameter, 2) / 2.0 / height + height / 2.0, (pow(height, 2) + pow(diameter, 2)) / 2.0 / height, diameter, Sphere::UPPER));
+        sphs_.emplace_back(Sphere(x, y, substrate().center().z() - sqrt(pow(substrate().radius(), 2) - pow(x - substrate().center().x(), 2) - pow(y - substrate().center().y(), 2)) - pow(radius, 2) / 2.0 / height + height / 2.0, (pow(height, 2) + pow(radius, 2)) / 2.0 / height, 2 * radius, Sphere::UPPER));
     else
-        sphs_.emplace_back(Sphere(x, y, substrate().center().z() + sqrt(pow(substrate().radius(), 2) - pow(x - substrate().center().x(), 2) - pow(y - substrate().center().y(), 2)) - pow(diameter, 2) / 2.0 / height + height / 2.0, (pow(height, 2) + pow(diameter, 2)) / 2.0 / height, diameter, Sphere::UPPER));
+        sphs_.emplace_back(Sphere(x, y, substrate().center().z() + sqrt(pow(substrate().radius(), 2) - pow(x - substrate().center().x(), 2) - pow(y - substrate().center().y(), 2)) - pow(radius, 2) / 2.0 / height + height / 2.0, (pow(height, 2) + pow(radius, 2)) / 2.0 / height, 2 * radius, Sphere::UPPER));
 }
 
-void ExpSetup::add_sphere(const std::vector<double> & x, const std::vector<double> & y, const std::vector<double> & height, const std::vector<double> & diameter)
+void ExpSetup::add_sphere(const std::vector<double> & x, const std::vector<double> & y, const std::vector<double> & height, const std::vector<double> & radius)
 {
-    if(x.size() == y.size() && y.size() == height.size() && height.size() == diameter.size())
+    if(x.size() == y.size() && y.size() == height.size() && height.size() == radius.size())
     {
-        setup::transform([this](double x_, double y_, double h_, double d_){add_sphere(x_, y_, h_, d_); }, x.cbegin(), x.cend(), y.cbegin(), height.cbegin(), diameter.cbegin());
+        setup::transform([this](double x_, double y_, double h_, double d_){add_sphere(x_, y_, h_, d_); }, x.cbegin(), x.cend(), y.cbegin(), height.cbegin(), radius.cbegin());
     }
     else
         throw std::invalid_argument ("ExpSetup::add_sphere : argument's vector sizes must be equal.");
@@ -161,12 +161,14 @@ std::vector<SphPoint> Beam::Intersect (const Sphere & sph) const
         std::remove_if(
             pts.begin(), 
             pts.end(), 
-            [this] (const SphPoint & spt) {return 
-                spt.point() == point()
-                ||
-                (spt.sphere().part() == Sphere::LOWER && Vector(spt.sphere().center(), spt.point()).theta() > (spt.sphere().psi() / 2.0 - Constants::pi / 2.0))
-                ||
-                (spt.sphere().part() == Sphere::UPPER && Vector(spt.sphere().center(), spt.point()).theta() < (Constants::pi / 2.0 - spt.sphere().psi() / 2.0)); }
+            [this] (const SphPoint & spt)
+                {return 
+                    spt.point() == point()
+                    ||
+                    (spt.sphere().part() == Sphere::LOWER && Vector(spt.sphere().center(), spt.point()).theta() > (spt.sphere().psi() / 2.0 - Constants::pi / 2.0))
+                    ||
+                    (spt.sphere().part() == Sphere::UPPER && Vector(spt.sphere().center(), spt.point()).theta() < (Constants::pi / 2.0 - spt.sphere().psi() / 2.0));
+                }
             ),
         pts.cend()
     );
@@ -177,10 +179,11 @@ std::vector<SphPoint> Beam::Intersect(const std::vector<Sphere> & sphs) const
 {
     std::vector<SphPoint> spts;
     for(const auto & sph_ : sphs)
-    {
-        auto pts_ = Intersect(sph_);
-        spts.insert(spts.end(), std::make_move_iterator(pts_.cbegin()), std::make_move_iterator(pts_.cend()));
-    }
+        if(is_intersect(sph_))
+        {
+            auto pts_ = Intersect(sph_);
+            spts.insert(spts.end(), std::make_move_iterator(pts_.cbegin()), std::make_move_iterator(pts_.cend()));
+        }
     return spts;
 }
 
@@ -216,18 +219,19 @@ SphBeam2D::SphBeam2D (const Sphere & sph, double inc_ang, double src_dist)
             sph.center().x(),
             sph.center().y() - src_dist,
             sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0)
-        });
-        double th1 = -sph.psi() / 2.0 - inc_ang;
-        double th2 = atan(-tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0) / (src_dist + sph.diameter() / 2.0));
-        SetVector(Vector((th2 - th1) * setup::dist(setup::gen) + th1));
+    });
+    double th1 = -sph.psi() / 2.0 - inc_ang;
+    double th2 = atan(-tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0) / (src_dist + sph.diameter() / 2.0));
+    SetVector(Vector((th2 - th1) * setup::dist(setup::gen) + th1));
 }
 
-PlaneBeam2D::PlaneBeam2D (const Sphere & sph, const Surface & surf, double inc_ang, double src_dist)
+PlaneBeam2D::PlaneBeam2D (const Sphere & sph, double inc_ang, double src_dist)
 {
-    SetPoint (Point {
-        sph.center().x(),
-        sph.center().y() - src_dist,
-        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0) + surf.dmax(sph) * setup::dist(setup::gen)
+    SetPoint (
+        Point {
+            sph.center().x(),
+            sph.center().y() - src_dist,
+            sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * sph.diameter() * setup::dist(setup::gen)
     });
     SetVector(Vector(-sph.psi() / 2.0 - inc_ang));
 }
@@ -242,12 +246,12 @@ Vector Beam2D::ScatVec (const SphPoint & spt, const Surface & surf, double wl) c
 // Beam3D
 SphBeam3D::SphBeam3D (const Sphere & sph, double inc_ang, double src_dist, double src_len)
 {
-    double x0 = ExpGeometry::L * setup::dist(setup::gen) - src_len / 2;
+    double x0 = src_len * setup::dist(setup::gen) - src_len / 2;
     SetPoint(
-    Point{
-        sph.center().x() + x0,
-        sph.center().y() - src_dist,
-        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0)
+        Point{
+            sph.center().x() + x0,
+            sph.center().y() - src_dist,
+            sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - sph.diameter() / 2.0)
     });
     double phi = Constants::pi / 2 - (2 * asin(sph.diameter() / 2.0 / sqrt(pow(src_dist, 2) + x0 * x0)) * setup::dist(setup::gen) + atan(-x0 / src_dist) - asin(sph.diameter() / 2.0 / sqrt(pow(src_dist, 2) + x0 * x0)));
     double th1 = atan((src_dist - sph.diameter() / 2) * tan(sph.psi() / 2 + inc_ang) / (x0 * cos(phi) - src_dist * sin(phi) + sqrt(pow(sph.diameter() / 2, 2) - pow(x0 * sin(phi) + src_dist * cos(phi), 2))));
@@ -260,10 +264,10 @@ PlaneBeam3D::PlaneBeam3D (const Sphere & sph, double inc_ang, double src_dist)
     double r = sph.diameter() / 2.0 * setup::dist(setup::gen);
     double phi = 2 * Constants::pi * setup::dist(setup::gen);
     SetPoint(
-    Point{
-        sph.center().x() - r * cos(phi),
-        sph.center().y() - src_dist,
-        sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - r * sin(phi))
+        Point{
+            sph.center().x() - r * cos(phi),
+            sph.center().y() - src_dist,
+            sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0 + inc_ang) * (src_dist - r * sin(phi))
     });
     SetVector(Vector(-sph.psi() / 2.0 - inc_ang));
 }
@@ -277,9 +281,20 @@ Vector Beam3D::ScatVec (const SphPoint & spt, const Surface & surf, double wl) c
     return geometry::RotationMatrix(Phi(setup::gen), spt.NormVec()) * (geometry::RotationMatrix(theta, VectorProduct(spt.NormVec(), tau)) * tau);
 }
 
+TestBeam3D::TestBeam3D(const Sphere & sph, double h, double src_dist)
+{
+    SetPoint(
+        Point{
+            sph.center().x() - 0.0,
+            sph.center().y() - src_dist,
+            sph.center().z() - sph.diameter() / 2.0 / tan(sph.psi() / 2.0) + tan(sph.psi() / 2.0) * (src_dist - sph.diameter() / 2.0) + h
+    });
+    SetVector(Vector(-sph.psi() / 2.0));
+}
+
 
 // Trace
-Point Trace::det_res(double det_dist) const noexcept
+TracePoint Trace::det_res(double det_dist) const noexcept
 {
-    return std::move(Point(trace_.back()->point().x() + (det_dist - trace_.back()->point().y()) / tan(trace_.back()->direction().phi()), det_dist, trace_.back()->point().z() + (det_dist - trace_.back()->point().y()) * tan(trace_.back()->direction().theta()) / sin(trace_.back()->direction().phi())));
+    return TracePoint (Point(trace_.back()->point().x() + (det_dist - trace_.back()->point().y()) / tan(trace_.back()->direction().phi()), det_dist, trace_.back()->point().z() + (det_dist - trace_.back()->point().y()) * tan(trace_.back()->direction().theta()) / sin(trace_.back()->direction().phi())), is_transmitted_, is_scattered_);
 }

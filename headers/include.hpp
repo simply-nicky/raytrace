@@ -15,6 +15,7 @@
 #include <future>
 #include <atomic>
 #include <memory>
+#include <type_traits>
 
 using std::atan;
 using std::atan2;

@@ -1,0 +1,48 @@
+cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
+
+project(raytrace_build VERSION 0.1 LANGUAGE CXX)
+
+set(CMAKE_CXX_STANDARD 14)
+
+if(NOT WIN32)
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Al2O3.txt 
+    DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+
+option(DEBUG "debug mode" OFF)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
+if (NOT DEFINED     BOOST_ROOT        AND
+NOT DEFINED ENV{BOOST_ROOT}       AND
+NOT DEFINED     BOOST_LIBRARYDIR  AND
+NOT DEFINED ENV{BOOST_LIBRARYDIR})
+if (APPLE)
+set(BOOST_ROOT "/usr/local/boost_1_66_0")
+set(BOOST_LIBRARYDIR "/usr/local/lib")
+elseif (WIN32)
+set(BOOST_ROOT "C:/'Program Files (x86)'/boost/boost_1_66_0")
+set(BOOST_LIBRARYDIR "C:/'Program Files (x86)'/boost/boost_1_66_0/stage/lib")
+endif()
+endif()
+if (APPLE OR WIN32)
+set(Boost_USE_STATIC_LIBS TRUE)
+endif()
+find_package(Boost 1.66 REQUIRED COMPONENTS filesystem program_options system)
+
+if(Boost_FOUND)
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+add_subdirectory(src)
+add_executable(raytrace main.cpp)
+target_link_libraries(raytrace ${Boost_LIBRARIES} sources)
+add_executable(Test test.cpp)
+target_link_libraries(Test sources)
+add_executable(parallel_test parallel_test.cpp)
+target_link_libraries(parallel_test sources)
+if(DEBUG)
+target_compile_options(sources PUBLIC -DDEBUG)
+target_compile_options(Test PUBLIC -DDEBUG)
+target_compile_options(parallel_test PUBLIC -DDEBUG)
+endif()
+endif()
+unset(DEBUG CACHE)

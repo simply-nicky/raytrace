@@ -18,7 +18,7 @@ namespace raytrace {
         static constexpr float d = 60.0;                               //mm
         static constexpr float l1 = 195.0;                             //mm
         static constexpr float l2 = 185.0;                             //mm
-        static constexpr float L = 100.0;                              //mm
+        static constexpr float L = 60.0;                              //mm
     };
 
     class Surface
@@ -26,9 +26,9 @@ namespace raytrace {
         private:
             setup::Spline delta_;
             setup::Spline gamma_;                                       //Permettivity = 1 - delta + i * gamma
-            const double RMSHeight_;                                    //RMS Height
-            const double CorrLength_;                                   //Correlation length
-            const double alpha_;                                        //alpha parameter in PSD ABC model
+            double RMSHeight_;                                    //RMS Height
+            double CorrLength_;                                   //Correlation length
+            double alpha_;                                        //alpha parameter in PSD ABC model
         public:
             Surface(double RMSHeight = Constants::RMSHeight,
             double CorrLength = Constants::CorrLength, double alpha = Constants::alpha, const std::string & str = "Al2O3.txt");
@@ -41,41 +41,46 @@ namespace raytrace {
             double PSD2D (double p1, double p2) const noexcept;                  //PSD 2D ([micrometer ^ -1]) [micrometer ^ 4]
             double CritAng(double wl = Constants::WL) const;            //Critical angle
             double dmax (const Sphere & sph, double wl = Constants::WL) const {return sph.radius() * pow(CritAng(wl), 2) / 2.0; }
+            const double RMSHeight() const noexcept {return RMSHeight_; }
+            double & RMSHeight() noexcept {return RMSHeight_; }
+            const double & CorrLength() const noexcept {return CorrLength_; }
+            double & CorrLength() noexcept {return CorrLength_; }
     };
 
     class ExpSetup
     {
         private:
-            double RMSHeight_, CorrLength_, wl_, inc_ang_, src_dist_, det_dist_, src_l_;
+            double wl_, inc_ang_, src_dist_, det_dist_, src_l_;
             Surface surf_;
             std::vector<Sphere> sphs_;
         public:
             ExpSetup (double inc_ang = 0.0, double RMSHeight = Constants::RMSHeight, double CorrLength = Constants::CorrLength) :
             surf_(Surface(RMSHeight, CorrLength)), sphs_(std::vector<Sphere>{Sphere(0.0, 0.0, ExpGeometry::rho, ExpGeometry::rho, ExpGeometry::d, Sphere::LOWER)}), inc_ang_(inc_ang),
-            RMSHeight_(RMSHeight), CorrLength_(CorrLength), wl_(Constants::WL), src_dist_(ExpGeometry::l1), det_dist_(ExpGeometry::l2), src_l_(ExpGeometry::L) {}
+            wl_(Constants::WL), src_dist_(ExpGeometry::l1), det_dist_(ExpGeometry::l2), src_l_(ExpGeometry::L) {}
 
-            const Sphere & substrate() const noexcept {return *sphs_.cbegin(); }
-            Sphere & substrate() noexcept {return *sphs_.begin(); }
+            const Sphere & substrate() const noexcept {return sphs_.front(); }
+            Sphere & substrate() noexcept {return sphs_.front(); }
             const std::vector<Sphere> & spheres() const noexcept {return sphs_; }
             const Surface & surface() const noexcept {return surf_; }
-            const double IncAngle() const noexcept {return inc_ang_; }
-            const double RMSHeight() const noexcept {return RMSHeight_; }
-            const double CorrLength() const noexcept {return CorrLength_; }
+            Surface & surface() noexcept {return surf_; }
+            const double & IncAngle() const noexcept {return inc_ang_; }
+            double & IncAngle() noexcept {return inc_ang_; }
             const double wavelength() const noexcept {return wl_; }
             const double source_distance() const noexcept {return src_dist_; }
             const double source_length() const noexcept {return src_l_; }
             const double detector_distance() const noexcept {return det_dist_; }
-            double source_length() noexcept {return src_l_; }
+            const double dmax() const {return surf_.dmax(sphs_.front(), wl_); }
             void add_sphere(const Sphere & sph) noexcept {sphs_.emplace_back(sph); }
-            void add_sphere(double x, double y, double height, double diameter) noexcept;
+            void add_sphere(double x, double y, double height, double radius) noexcept;
             void add_sphere(const std::vector<Sphere> & sphs) noexcept {sphs_.insert(sphs_.end(), sphs.cbegin(), sphs.cend()); }
-            void add_sphere(const std::vector<double> & x, const std::vector<double> & y, const std::vector<double> & height, const std::vector<double> & diameter);
+            void add_sphere(const std::vector<double> & x, const std::vector<double> & y, const std::vector<double> & height, const std::vector<double> & radius);
+            void reset_sphere() noexcept {if(sphs_.size() > 1) sphs_.erase(sphs_.cbegin() + 1,sphs_.cend()); }
     };
 
     class Beam : public Line
     {
         private:
-            static constexpr double intersect_limit = 1e-3;
+            static constexpr double intersect_limit = 1e-8;
         public:
             using Line::Line;
             double Delta (const Sphere & sph) const noexcept;
@@ -107,8 +112,8 @@ namespace raytrace {
     {
         public:
             using Beam2D::Beam2D;
-            PlaneBeam2D (const Sphere & sph, const Surface & surf, double inc_ang, double src_dist);
-            PlaneBeam2D (const ExpSetup & setup) : PlaneBeam2D(setup.substrate(), setup.surface(), setup.IncAngle(), setup.source_distance()) {}
+            PlaneBeam2D (const Sphere & sph, double inc_ang, double src_dist);
+            PlaneBeam2D (const ExpSetup & setup) : PlaneBeam2D(setup.substrate(), setup.IncAngle(), setup.source_distance()) {}
     };
 
     class Beam3D : public Beam
@@ -134,11 +139,28 @@ namespace raytrace {
             PlaneBeam3D(const ExpSetup & setup) : PlaneBeam3D(setup.substrate(), setup.IncAngle(), setup.source_distance()) {}
     };
 
+    class TestBeam3D : public Beam3D
+    {
+        public:
+            using Beam3D::Beam3D;
+            TestBeam3D(const Sphere & sph, double h, double src_dist);
+            TestBeam3D(const ExpSetup & setup, double h) : TestBeam3D(setup.substrate(), h, setup.source_distance()) {}
+    };
+
+    struct TracePoint
+    {
+        Point det_point;
+        bool is_scattered;
+        bool is_transmitted;
+        TracePoint (const Point & pt, bool is_tr, bool is_sc) : det_point(pt), is_transmitted(is_tr), is_scattered(is_sc) {}
+    };
+
     class Trace
     {
         private:
             std::vector<std::unique_ptr<Beam>> trace_;
-            bool is_transmitted_;
+            bool is_transmitted_ {};
+            bool is_scattered_ {};
         public:
             using iterator = boost::indirect_iterator<std::vector<std::unique_ptr<Beam>>::iterator>;
             using const_iterator = boost::indirect_iterator<std::vector<std::unique_ptr<Beam>>::const_iterator>;
@@ -148,26 +170,31 @@ namespace raytrace {
             const_iterator end() const {return const_iterator(trace_.end()); }
 
             template <typename T, typename Object>
-            Trace (const T & line, const Surface & surf, const Object & sphs, double wl)
+            Trace (T && line, const Surface & surf, const Object & sphs, double wl)
             {
-                trace_.emplace_back(std::make_unique<T>(line));
+                trace_.emplace_back(std::make_unique<std::remove_reference_t<T>>(std::forward<T>(line)));
                 is_transmitted_ = trace_.back()->is_intersect(sphs); 
                 if (is_transmitted_)
                 {
                     double sw = setup::dist(setup::gen);
-                    auto pts = trace_.back()->Intersect(sphs);
-                    auto next_spt_ = *std::min_element(pts.cbegin(), pts.cend(), [](const SphPoint & a, const SphPoint & b) {return a.point().y() < b.point().y(); });
+                    auto spts = trace_.back()->Intersect(sphs);
+                    if(spts.size() == 0)
+                        throw std::runtime_error ("Trace : The incident line doesn't intersect the substrate.");
+                    auto next_spt_ = *std::min_element(spts.cbegin(), spts.cend(), [](const SphPoint & a, const SphPoint & b) {return a.point().y() < b.point().y(); });
                     is_transmitted_ = sw < surf.Rf(trace_.back()->IncAng(next_spt_), wl);
                     while (is_transmitted_)
                     {
                         if (sw < surf.TIS(trace_.back()->IncAng(next_spt_), wl))
-                            trace_.emplace_back(std::make_unique<T>(next_spt_.point(), trace_.back()->ScatVec(next_spt_, surf, wl)));
+                        {
+                            trace_.emplace_back(std::make_unique<std::remove_reference_t<T>>(next_spt_.point(), trace_.back()->ScatVec(next_spt_, surf, wl)));
+                            is_scattered_ = true;
+                        }
                         else
-                            trace_.emplace_back(std::make_unique<T>(next_spt_.point(), trace_.back()->SpecVec(next_spt_)));
-                        pts = trace_.back()->Intersect(sphs);
-                        if (pts.size() == 0)
+                            trace_.emplace_back(std::make_unique<std::remove_reference_t<T>>(next_spt_.point(), trace_.back()->SpecVec(next_spt_)));
+                        spts = trace_.back()->Intersect(sphs);
+                        if (spts.size() == 0)
                             break;
-                        next_spt_ = *std::min_element(pts.cbegin(), pts.cend(), [](const SphPoint & a, const SphPoint & b) {return a.point().y() < b.point().y(); });
+                        next_spt_ = *std::min_element(spts.cbegin(), spts.cend(), [](const SphPoint & a, const SphPoint & b) {return a.point().y() < b.point().y(); });
                         sw = setup::dist(setup::gen);
                         is_transmitted_ = sw < surf.Rf(trace_.back()->IncAng(next_spt_), wl);
                     }  
@@ -175,11 +202,11 @@ namespace raytrace {
             }
 
             template <typename T>
-            Trace (const T & line, const ExpSetup & setup) : Trace(line, setup.surface(), setup.spheres(), setup.wavelength()) {}
+            Trace (T && line, const ExpSetup & setup) : Trace(std::forward<T>(line), setup.surface(), setup.spheres(), setup.wavelength()) {}
 
-            Point det_res(double det_dist) const noexcept;
-            Point det_res(const ExpSetup & setup) const noexcept {return det_res(setup.detector_distance()); }
+            TracePoint det_res(double det_dist) const noexcept;
             bool is_transmitted() const noexcept {return is_transmitted_; }
+            bool is_scattered() const noexcept {return is_scattered_; }
             int size() const noexcept {return trace_.size(); }
     };
 

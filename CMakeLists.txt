@@ -2,14 +2,8 @@ cmake_minimum_required(VERSION 3.6 FATAL_ERROR)
 
 project(raytrace_build VERSION 0.1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 # set(Boost_DEBUG 1)
-
-
-# if(NOT WIN32)
-# file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Al2O3.txt 
-# DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-# endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -48,6 +42,12 @@ add_custom_command(
                 COMMAND ${CMAKE_COMMAND} -E copy
                         ${CMAKE_SOURCE_DIR}/Al2O3.txt 
                         ${CMAKE_CURRENT_BINARY_DIR}/Al2O3.txt
+                 )
+add_custom_command(
+                TARGET raytrace POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy
+                        ${CMAKE_SOURCE_DIR}/config.ini
+                        ${CMAKE_CURRENT_BINARY_DIR}/config.ini
                  )
 if(UNIX AND NOT APPLE)
 find_package(Threads REQUIRED)
