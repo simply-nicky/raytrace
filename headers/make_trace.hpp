@@ -23,7 +23,7 @@ namespace raytrace {
             
             template <
                 typename T,
-                typename = std::enable_if_t<std::is_arithmetic<std::remove_reference_t<T>>::value>
+                typename = std::enable_if_t<std::is_arithmetic_v<std::remove_reference_t<T>>>
             >
             exml_tree(T && n) : exml_tree()
             {

@@ -1,6 +1,6 @@
 #ifndef TRACE_RAYTRACE_
 #define TRACE_RAYTRACE_
-#include <headers/rng.hpp>
+#include <headers/setup.hpp>
 #include <headers/geometry.hpp>
 #include <boost/iterator/indirect_iterator.hpp>
 
@@ -29,22 +29,27 @@ namespace raytrace {
             double RMSHeight_;                                    //RMS Height
             double CorrLength_;                                   //Correlation length
             double alpha_;                                        //alpha parameter in PSD ABC model
+
+            double k(double wl) const {return 2 * Constants::pi / wl; }
+            double mu0(double th0, double corl, double wl) const {return corl * pow(sin(th0), 2) / (2 * wl); }
+            std::complex<double> muc(double th0, double corl, double wl) const {return corl * (1.0 - permettivity(wl)) / (2 * wl); }
+            double F(double tau, double alpha) const {return 2.0 / sqrt(Constants::pi) * tgamma(alpha + 0.5) / tgamma(alpha) / pow(1 + tau * tau, alpha + 0.5); }
         public:
             Surface(double RMSHeight = Constants::RMSHeight,
             double CorrLength = Constants::CorrLength, double alpha = Constants::alpha, const std::string & str = "Al2O3.txt");
             std::complex<double> permettivity (double wl = Constants::WL) const;
-            double Rf (double ang, double wl = Constants::WL) const;
-            double TIS (double ang, double wl = Constants::WL) const;
+            double Rf (double th0, double wl = Constants::WL) const;
+            double TIS (double th0, double rmsh, double corl, double alpha, double wl = Constants::WL) const;
             double Indicatrix1D (double th, double th0, double wl = Constants::WL) const;
             double Indicatrix2D (double th, double phi, double th0, double wl = Constants::WL) const;
             double PSD1D (double p) const noexcept;                              //PSD 1D ([micrometer ^ -1]) [micrometer ^ 3]
             double PSD2D (double p1, double p2) const noexcept;                  //PSD 2D ([micrometer ^ -1]) [micrometer ^ 4]
-            double CritAng(double wl = Constants::WL) const;            //Critical angle
-            double dmax (const Sphere & sph, double wl = Constants::WL) const {return sph.radius() * pow(CritAng(wl), 2) / 2.0; }
-            const double RMSHeight() const noexcept {return RMSHeight_; }
+            double CritAng(double wl = Constants::WL) const;                     //Critical angle
+            double RMSHeight() const noexcept {return RMSHeight_; }
             double & RMSHeight() noexcept {return RMSHeight_; }
-            const double & CorrLength() const noexcept {return CorrLength_; }
+            double CorrLength() const noexcept {return CorrLength_; }
             double & CorrLength() noexcept {return CorrLength_; }
+            double alpha() const noexcept {return alpha_; }
     };
 
     class ExpSetup
@@ -69,7 +74,6 @@ namespace raytrace {
             const double source_distance() const noexcept {return src_dist_; }
             const double source_length() const noexcept {return src_l_; }
             const double detector_distance() const noexcept {return det_dist_; }
-            const double dmax() const {return surf_.dmax(sphs_.front(), wl_); }
             void add_sphere(const Sphere & sph) noexcept {sphs_.emplace_back(sph); }
             void add_sphere(double x, double y, double height, double radius) noexcept;
             void add_sphere(const std::vector<Sphere> & sphs) noexcept {sphs_.insert(sphs_.end(), sphs.cbegin(), sphs.cend()); }
@@ -172,25 +176,24 @@ namespace raytrace {
             template <typename T, typename Object>
             Trace (T && line, const Surface & surf, const Object & sphs, double wl)
             {
-                trace_.emplace_back(std::make_unique<std::remove_reference_t<T>>(std::forward<T>(line)));
+                trace_.emplace_back(std::make_unique<std::decay_t<T>>(std::forward<T>(line)));
                 is_transmitted_ = trace_.back()->is_intersect(sphs); 
                 if (is_transmitted_)
                 {
                     double sw = setup::dist(setup::gen);
                     auto spts = trace_.back()->Intersect(sphs);
-                    if(spts.size() == 0)
-                        throw std::runtime_error ("Trace : The incident line doesn't intersect the substrate.");
+                    assert(spts.size() != 0);
                     auto next_spt_ = *std::min_element(spts.cbegin(), spts.cend(), [](const SphPoint & a, const SphPoint & b) {return a.point().y() < b.point().y(); });
                     is_transmitted_ = sw < surf.Rf(trace_.back()->IncAng(next_spt_), wl);
                     while (is_transmitted_)
                     {
-                        if (sw < surf.TIS(trace_.back()->IncAng(next_spt_), wl))
+                        if (sw < surf.TIS(trace_.back()->IncAng(next_spt_), surf.RMSHeight(), surf.CorrLength(), surf.alpha(), wl))
                         {
-                            trace_.emplace_back(std::make_unique<std::remove_reference_t<T>>(next_spt_.point(), trace_.back()->ScatVec(next_spt_, surf, wl)));
+                            trace_.emplace_back(std::make_unique<std::decay_t<T>>(next_spt_.point(), trace_.back()->ScatVec(next_spt_, surf, wl)));
                             is_scattered_ = true;
                         }
                         else
-                            trace_.emplace_back(std::make_unique<std::remove_reference_t<T>>(next_spt_.point(), trace_.back()->SpecVec(next_spt_)));
+                            trace_.emplace_back(std::make_unique<std::decay_t<T>>(next_spt_.point(), trace_.back()->SpecVec(next_spt_)));
                         spts = trace_.back()->Intersect(sphs);
                         if (spts.size() == 0)
                             break;

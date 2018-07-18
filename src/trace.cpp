@@ -51,19 +51,33 @@ std::complex<double> Surface::permettivity (double wl) const
     return std::complex<double> (1.0 - delta_.funcval(wl), - gamma_.funcval(wl));
 }
 
-double Surface::Rf (double ang, double wl) const
+double Surface::Rf (double th0, double wl) const
 {
-    if (ang < 0.0 || ang > Constants::pi / 2.0)
-        throw std::out_of_range ("Surface::Rf : angle is out of range");
-    std::complex<double> rf ((sin(ang) - sqrt(permettivity(wl) - cos(ang) * cos(ang))) / (sin(ang) + sqrt(permettivity(wl) - cos(ang) * cos(ang))));
+    assert(th0 >= 0.0 && th0 <= Constants::pi / 2.0);
+    std::complex<double> rf ((sin(th0) - sqrt(permettivity(wl) - cos(th0) * cos(th0))) / (sin(th0) + sqrt(permettivity(wl) - cos(th0) * cos(th0))));
     return abs(rf) * abs(rf);
 }
 
-double Surface::TIS (double ang, double wl) const
+double Surface::TIS (double th0, double rmsh, double corl, double alpha, double wl) const
 {
-    if (ang < 0.0 || ang > Constants::pi / 2.0)
-        throw std::out_of_range ("Surface::TIS : angle is out of renge");
-    return Rf(ang, wl) * (1.0 - std::exp(- pow(4 * Constants::pi * RMSHeight_ * sin(ang) / wl, 2)));
+    assert(th0 >= 0.0 && th0 <= Constants::pi / 2.0);
+    double int1_ = setup::AdapSimpson<double>(
+        [this, th0, corl, alpha, wl] (double tau)
+        {
+            return sqrt(mu0(th0, corl, wl) + tau) * pow(abs((sqrt(mu0(th0, corl, wl) + tau) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl) + tau)) / (sqrt(mu0(th0, corl, wl)) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl)))), 2) * F(tau, alpha); 
+        },
+        0.0,
+        corl * k(wl) * cos(th0) / (2 * Constants::pi)
+    ).result();
+    double int2_ = setup::AdapSimpson<double>(
+        [this, th0, corl, alpha, wl] (double tau)
+        {
+            return sqrt(mu0(th0, corl, wl) - tau) * pow(abs((sqrt(mu0(th0, corl, wl) - tau) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl) - tau)) / (sqrt(mu0(th0, corl, wl)) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl)))), 2) * F(tau, alpha); 
+        },
+        0.0,
+        mu0(th0, corl, wl)
+    ).result();
+    return 4.0 * sqrt(Constants::pi) * pow(k(wl) * rmsh, 2) * sin(th0) / sqrt(k(wl) * corl) * Rf(th0, wl) * (int1_ + int2_);
 }
 
 double Surface::PSD1D (double p) const noexcept
@@ -79,29 +93,22 @@ double Surface::PSD2D (double p1, double p2) const noexcept
 
 double Surface::Indicatrix1D (double th, double th0, double wl) const
 {
-    if (th < 0 || th > Constants::pi / 2)
-        throw std::out_of_range ("Surface::Indicatrix1D : angle th is out of range");
-    if (th0 < 0 || th0 > Constants::pi / 2)
-        throw std::out_of_range ("Surface::Indicatrix1D : angle th0 is out of range");
-    double k = 2.0 * Constants::pi / wl;
+    assert(th >= 0 && th <= Constants::pi / 2.0);
+    assert(th0 >= 0 && th0 <= Constants::pi / 2.0);
     std::complex<double> t (2.0 * sin(th) / (sin(th) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th) * cos(th)))));
     std::complex<double> t0 (2.0 * sin(th0) / (sin(th0) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th0) * cos(th0)))));
-    return pow(k, 3) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / 16.0 / Constants::pi / sin(th0)
+    return pow(k(wl), 3) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / 16.0 / Constants::pi / sin(th0)
     / sqrt(cos(th0) * cos(th)) * pow(10.0, 9) * PSD1D(1.0 / wl * pow(10.0, 3) * abs(cos(th0) - cos(th)));
 }
 
 double Surface::Indicatrix2D (double th, double phi, double th0, double wl) const
 {
-    if (th < 0 || th > Constants::pi / 2.0)
-        throw std::out_of_range ("Surface::Indicatrix2D : angle th is out of range");
-    if (phi < -Constants::pi / 2.0 || phi > Constants::pi / 2.0)
-        throw std::out_of_range ("Surface::Indicatrix2D : angle phi is out of range");
-    if (th0 < 0 || th0 > Constants::pi / 2.0)
-        throw std::out_of_range ("Surface::Indicatrix2D : angle th0 is out of range");       
-    double k = 2.0 * Constants::pi / wl;
+    assert(th >= 0 && th <= Constants::pi / 2.0);
+    assert(th0 >= 0 && th0 <= Constants::pi / 2.0);
+    assert(phi >= -Constants::pi / 2.0 && phi <= Constants::pi / 2.0);     
     std::complex<double> t (2.0 * sin(th) / (sin(th) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th) * cos(th)))));
     std::complex<double> t0 (2.0 * sin(th0) / (sin(th0) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th0) * cos(th0)))));
-    return  pow(k, 4) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / pow(4 * Constants::pi, 2) / sin(th0) * pow(10.0, 12)
+    return  pow(k(wl), 4) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / pow(4 * Constants::pi, 2) / sin(th0) * pow(10.0, 12)
     * PSD2D(1.0 / wl * pow(10.0, 3) * (cos(th) * cos(phi) - cos(th0)), 1.0 / wl * pow(10.0, 3) * cos(th) * sin(phi));
 }
 
@@ -122,20 +129,16 @@ void ExpSetup::add_sphere(double x, double y, double height, double radius) noex
 
 void ExpSetup::add_sphere(const std::vector<double> & x, const std::vector<double> & y, const std::vector<double> & height, const std::vector<double> & radius)
 {
-    if(x.size() == y.size() && y.size() == height.size() && height.size() == radius.size())
-    {
-        setup::transform([this](double x_, double y_, double h_, double d_){add_sphere(x_, y_, h_, d_); }, x.cbegin(), x.cend(), y.cbegin(), height.cbegin(), radius.cbegin());
-    }
-    else
-        throw std::invalid_argument ("ExpSetup::add_sphere : argument's vector sizes must be equal.");
+    assert(x.size() == y.size() && y.size() == height.size() && height.size() == radius.size());
+    setup::transform([this](double x_, double y_, double h_, double d_){add_sphere(x_, y_, h_, d_); }, x.cbegin(), x.cend(), y.cbegin(), height.cbegin(), radius.cbegin());
 }
 
 
 // Beam
 double Beam::Delta (const Sphere & sph) const noexcept
 {
-    return pow((point().x() - sph.center().x()) * cos(direction().theta()) * cos(direction().phi()) + (point().y() - sph.center().y()) * cos(direction().theta()) * sin(direction().phi()) + (point().z() - sph.center().z()) * sin(direction().theta()), 2)
-    - pow(point().x() - sph.center().x(), 2) - pow(point().y() - sph.center().y(), 2) - pow(point().z() - sph.center().z(), 2) + sph.radius() * sph.radius();
+    Vector v_ = Vector(sph.center(), point());
+    return pow(v_ * direction(), 2) - v_.Abs() + sph.radius() * sph.radius();
 }
 
 std::vector<SphPoint> Beam::Intersect (const Sphere & sph) const

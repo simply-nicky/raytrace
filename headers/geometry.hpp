@@ -41,8 +41,9 @@ namespace raytrace { namespace geometry {
             friend Vector VectorProduct (const Vector & a, const Vector & b) noexcept;
             double theta() const noexcept {return atan(vz_ / sqrt(vx_ * vx_ + vy_ * vy_)); }
             double phi() const noexcept {return atan2(vy_, vx_); }
-            double Norm() const {return sqrt(vx_ * vx_ + vy_ * vy_ + vz_ * vz_); }
-            Vector Normalize() {return *this / Norm(); }
+            double Abs() const noexcept {return vx_ * vx_ + vy_ * vy_ + vz_ * vz_; }
+            double Norm() const noexcept {return sqrt(Abs()); }
+            Vector Normalize() const {return *this / Norm(); }
             double x() const noexcept {return vx_; }
             double y() const noexcept {return vy_; }
             double z() const noexcept {return vz_; }
@@ -56,7 +57,7 @@ namespace raytrace { namespace geometry {
         public:
             RotationMatrix (double theta) noexcept
             : m_{Vector (1.0, 0.0, 0.0), Vector (0.0, cos(theta), -sin(theta)), Vector (0.0, sin(theta), cos(theta))} {}
-            RotationMatrix (double theta, Vector v) noexcept
+            RotationMatrix (double theta, const Vector & v) noexcept
             : m_
             {
                 Vector
@@ -124,12 +125,11 @@ namespace raytrace { namespace geometry {
         public:
             Line() = default;
             virtual ~Line() = default;
-            Line (const Point & pt, const Vector & v) noexcept : pt0_(pt), v_(v) {}
+            Line (const Point & pt, const Vector & v) noexcept : pt0_(pt), v_(v.Normalize()) {}
             Line (double x, double y, double z, double theta, double phi) noexcept : pt0_(x, y, z), v_(theta, phi) {}
             friend std::ostream & operator<< (std::ostream & os, const Line & line) noexcept;
             Point point() const noexcept {return pt0_; }
             Vector direction() const noexcept {return v_; }
-            virtual void message() const noexcept {std::cout << "Line\n"; }
     };
     
 }}
