@@ -56,15 +56,12 @@ namespace raytrace { namespace setup {
             RNG (fn && pdf, double low, double high) : low_(low), high_(high)
             {
                 assert(low_ < high_);
-                std::vector<double> val_;
-                std::vector<double> cdf_;
-                std::vector<double> pdf_;
+                std::vector<double> val_, cdf_, pdf_;
                 double step = (high_ - low_) / res_;
                 for (unsigned int i = 0; i < res_; i++)
                     pdf_.emplace_back(pdf(low_ + i * step));
                 double pdf_max = *std::max_element(pdf_.begin(), pdf_.end());
-                double x = low_;
-                double y = 0.0;
+                double x = low_, y = 0.0;
                 while(x < high_)
                 {
                     double dx = step / (1.0 + 5.0 * std::tanh(2 * pdf(x) / pdf_max));

@@ -18,7 +18,7 @@ namespace raytrace {
         static constexpr float d = 60.0;                               //mm
         static constexpr float l1 = 195.0;                             //mm
         static constexpr float l2 = 185.0;                             //mm
-        static constexpr float L = 60.0;                              //mm
+        static constexpr float L = 60.0;                               //mm
     };
 
     class Surface
@@ -26,13 +26,13 @@ namespace raytrace {
         private:
             setup::Spline delta_;
             setup::Spline gamma_;                                       //Permettivity = 1 - delta + i * gamma
-            double RMSHeight_;                                    //RMS Height
-            double CorrLength_;                                   //Correlation length
-            double alpha_;                                        //alpha parameter in PSD ABC model
+            double RMSHeight_;                                          //RMS Height [nm]
+            double CorrLength_;                                         //Correlation length [um]
+            double alpha_;                                              //alpha parameter in PSD ABC model
 
             double k(double wl) const {return 2 * Constants::pi / wl; }
-            double mu0(double th0, double corl, double wl) const {return corl * pow(sin(th0), 2) / (2 * wl); }
-            std::complex<double> muc(double th0, double corl, double wl) const {return corl * (1.0 - permettivity(wl)) / (2 * wl); }
+            double mu0(double th0, double corl, double wl) const {return corl * 1e3 * pow(sin(th0), 2) / (2 * wl); }
+            std::complex<double> muc(double corl, double wl) const {return corl * 1e3 * (1.0 - permettivity(wl)) / (2 * wl); }
             double F(double tau, double alpha) const {return 2.0 / sqrt(Constants::pi) * tgamma(alpha + 0.5) / tgamma(alpha) / pow(1 + tau * tau, alpha + 0.5); }
         public:
             Surface(double RMSHeight = Constants::RMSHeight,
@@ -44,7 +44,7 @@ namespace raytrace {
             double Indicatrix2D (double th, double phi, double th0, double wl = Constants::WL) const;
             double PSD1D (double p) const noexcept;                              //PSD 1D ([micrometer ^ -1]) [micrometer ^ 3]
             double PSD2D (double p1, double p2) const noexcept;                  //PSD 2D ([micrometer ^ -1]) [micrometer ^ 4]
-            double CritAng(double wl = Constants::WL) const;                     //Critical angle
+            double CritAng(double wl = Constants::WL) const {return sqrt(1.0 - real(permettivity(wl))); }
             double RMSHeight() const noexcept {return RMSHeight_; }
             double & RMSHeight() noexcept {return RMSHeight_; }
             double CorrLength() const noexcept {return CorrLength_; }

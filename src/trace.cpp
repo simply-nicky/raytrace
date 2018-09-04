@@ -13,9 +13,7 @@ Surface::Surface (double RMSHeight, double CorrLength, double alpha, const std::
         std::cout << "Surface : could not open permettivity file\n";
         exit(EXIT_FAILURE);
     }
-    std::vector<double> wl;
-    std::vector<double> delta;
-    std::vector<double> gamma;
+    std::vector<double> wl, delta, gamma;
     while (fin.good())
     {
         double temp;
@@ -64,31 +62,31 @@ double Surface::TIS (double th0, double rmsh, double corl, double alpha, double 
     double int1_ = setup::AdapSimpson<double>(
         [this, th0, corl, alpha, wl] (double tau)
         {
-            return sqrt(mu0(th0, corl, wl) + tau) * pow(abs((sqrt(mu0(th0, corl, wl) + tau) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl) + tau)) / (sqrt(mu0(th0, corl, wl)) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl)))), 2) * F(tau, alpha); 
+            return sqrt(mu0(th0, corl, wl) + tau) * pow(abs((sqrt(mu0(th0, corl, wl) + tau) - sqrt(mu0(th0, corl, wl) - muc( corl, wl) + tau)) / (sqrt(mu0(th0, corl, wl)) - sqrt(mu0(th0, corl, wl) - muc(corl, wl)))), 2) * F(tau, alpha); 
         },
         0.0,
-        corl * k(wl) * cos(th0) / (2 * Constants::pi)
+        corl * 1e3 * k(wl) * cos(th0) / (2 * Constants::pi)
     ).result();
     double int2_ = setup::AdapSimpson<double>(
         [this, th0, corl, alpha, wl] (double tau)
         {
-            return sqrt(mu0(th0, corl, wl) - tau) * pow(abs((sqrt(mu0(th0, corl, wl) - tau) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl) - tau)) / (sqrt(mu0(th0, corl, wl)) - sqrt(mu0(th0, corl, wl) - muc(th0, corl, wl)))), 2) * F(tau, alpha); 
+            return sqrt(mu0(th0, corl, wl) - tau) * pow(abs((sqrt(mu0(th0, corl, wl) - tau) - sqrt(mu0(th0, corl, wl) - muc(corl, wl) - tau)) / (sqrt(mu0(th0, corl, wl)) - sqrt(mu0(th0, corl, wl) - muc(corl, wl)))), 2) * F(tau, alpha); 
         },
         0.0,
         mu0(th0, corl, wl)
     ).result();
-    return 4.0 * sqrt(Constants::pi) * pow(k(wl) * rmsh, 2) * sin(th0) / sqrt(k(wl) * corl) * Rf(th0, wl) * (int1_ + int2_);
+    return 4.0 * sqrt(Constants::pi) * pow(k(wl) * rmsh, 2) * sin(th0) / sqrt(k(wl) * corl * 1e3) * Rf(th0, wl) * (int1_ + int2_);
 }
 
 double Surface::PSD1D (double p) const noexcept
 {
-    return 2.0 / sqrt(Constants::pi) * pow(10.0, -6) * tgamma(alpha_ + 0.5) / tgamma(alpha_) * pow(RMSHeight_, 2)
+    return 2.0 / sqrt(Constants::pi) * 1e-6 * tgamma(alpha_ + 0.5) / tgamma(alpha_) * pow(RMSHeight_, 2)
     * CorrLength_ / pow(1.0 + p * p * CorrLength_ * CorrLength_, alpha_ + 0.5);
 }
 
 double Surface::PSD2D (double p1, double p2) const noexcept
 {
-    return pow(10.0, -6) * pow(CorrLength_, 2) * pow(RMSHeight_, 2) * alpha_ / Constants::pi / pow(1.0 + (p1 * p1 + p2 * p2) * pow(CorrLength_, 2), 1.0 + alpha_);
+    return 1e-6 * pow(CorrLength_, 2) * pow(RMSHeight_, 2) * alpha_ / Constants::pi / pow(1.0 + (p1 * p1 + p2 * p2) * pow(CorrLength_, 2), 1.0 + alpha_);
 }
 
 double Surface::Indicatrix1D (double th, double th0, double wl) const
@@ -110,11 +108,6 @@ double Surface::Indicatrix2D (double th, double phi, double th0, double wl) cons
     std::complex<double> t0 (2.0 * sin(th0) / (sin(th0) + sqrt(std::complex<double>(real(permettivity(wl)) - cos(th0) * cos(th0)))));
     return  pow(k(wl), 4) * pow(abs(1.0 - real(permettivity(wl))), 2) * pow(abs(t * t0), 2) / pow(4 * Constants::pi, 2) / sin(th0) * pow(10.0, 12)
     * PSD2D(1.0 / wl * pow(10.0, 3) * (cos(th) * cos(phi) - cos(th0)), 1.0 / wl * pow(10.0, 3) * cos(th) * sin(phi));
-}
-
-double Surface::CritAng(double wl) const
-{
-    return sqrt(1.0 - real(permettivity(wl)));
 }
 
 

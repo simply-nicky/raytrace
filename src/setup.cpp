@@ -59,12 +59,7 @@ Spline::Spline (const std::vector<double> & x, const std::vector<double> & y)
         dx.emplace_back(x[i + 1] - x[i]);
         dy.emplace_back(y[i + 1] - y[i]);
     }
-    std::vector<double> a (n + 1);
-    std::vector<double> b (n + 1);
-    std::vector<double> c (n + 1);
-    std::vector<double> d (n + 1);
-    std::vector<double> alpha (n + 1);
-    std::vector<double> betta (n + 1);
+    std::vector<double> a (n + 1), b (n + 1), c (n + 1), d (n + 1), alpha (n + 1), betta (n + 1);
     a[0] = 0.0;
     b[0] = 2 / dx[0];
     c[0] = 1 / dx[0];
@@ -94,12 +89,7 @@ Spline::Spline (const std::vector<double> & x, const std::vector<double> & y)
 
 double Spline::funcval (double x) const
 {
-    if(x < SplineVec::front().x || x > SplineVec::back().x)
-    {
-        std::ostringstream oss;
-        oss << "Spline::funcval : invalid argument x = " << x << "xmin =  " << SplineVec::front().x << "xmax = " << SplineVec::back().x;
-        throw std::invalid_argument(oss.str());
-    }
+    assert(x >= SplineVec::begin()->x && x <= SplineVec::back().x);
     auto pt2 = lower_bound(SplineVec::begin(), SplineVec::end(), SplineSet(x));
     if (x == pt2->x)
         return pt2->y;
@@ -112,7 +102,7 @@ double Spline::funcval (double x) const
 
 double Spline::deriv (double x) const
 {
-    assert (x > SplineVec::front().x && x < SplineVec::back().x);
+    assert (x >= SplineVec::front().x && x <= SplineVec::back().x);
     auto pt2 = lower_bound(SplineVec::begin(), SplineVec::end(), SplineSet(x));
     if (x == pt2->x)
         return pt2->k;
@@ -125,7 +115,7 @@ double Spline::deriv (double x) const
 
 double Spline::arg (double y) const
 {
-    assert(y > SplineVec::begin()->y && y < SplineVec::back().y);
+    assert(y >= SplineVec::begin()->y && y <= SplineVec::back().y);
     return FindRoot(*this, y).x;
 }
 

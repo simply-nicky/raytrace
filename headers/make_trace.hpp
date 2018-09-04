@@ -148,7 +148,7 @@ namespace raytrace {
             using ExpSetup::IncAngle;
             using ExpSetup::surface;
 
-            tracing(double inc_ang = 0.0, double RMSHeight = Constants::RMSHeight, double CorrLength = Constants::CorrLength, const fs::path & path = fs::current_path())
+            tracing(double RMSHeight = Constants::RMSHeight, double CorrLength = Constants::CorrLength, double inc_ang = 0.0, const fs::path & path = fs::current_path())
             : base_setup(path), ExpSetup(inc_ang, RMSHeight, CorrLength) {}
             void set_threads(unsigned int n) noexcept {threads_num_ = n; }
 
